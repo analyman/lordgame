@@ -37,9 +37,9 @@ class LordAgent():
     @classmethod
     def network(cls):
         model = keras.Sequential()
-        model.add(Dense(1, activation=activations.relu, input_dim=83))
-        # model.add(Dense(20, activation=activations.relu))
-        # model.add(Dense(1, activation=activations.relu))
+        model.add(Dense(100, activation=activations.relu, input_dim=83))
+        model.add(Dense(100, activation=activations.relu))
+        model.add(Dense(1, activation=activations.relu))
         opt = keras.optimizers.Adam(learning_rate)
         model.compile(optimizer=opt, loss="mse")
         return model
@@ -47,7 +47,7 @@ class LordAgent():
     def train_q(self, old_state: [int], action: int,
                 old_q: float, reward: float,
                 new_state: [int]):
-        assert(action >= 0 and action < 100)
+        assert(action >= 0)
         assert(old_state.__len__() == 82)
         assert(new_state.__len__() == 82)
         # TODO
@@ -70,7 +70,6 @@ class LordAgent():
             if q > max_quality:
                 max_quality = q
                 max_index = i
-        assert(max_index >= 0 and max_index < 100)
         return max_quality, max_index
 
     def save(self, filepath):
@@ -78,3 +77,11 @@ class LordAgent():
 
     def load(self, filepath):
         self.model = keras.models.load_model(filepath)
+
+    def try_load(self, filepath):
+        m = self.model
+        try:
+            self.load(filepath)
+        except OSError as err:
+            print(err)
+            self.model = m

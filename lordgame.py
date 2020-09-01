@@ -598,6 +598,7 @@ def get_multiThreeA(cards: [Card]) -> [CardCombination]:
     return ret
 
 
+# FIXME
 def get_multiThreeB(cards: [Card]) -> [CardCombination]:
     ret = []
     mm = get_multiThree(cards)
@@ -654,9 +655,11 @@ class PlayerState():
 
 
 class Player():
-    def __init__(self, player_agent: LordAgent):
+    def __init__(self, player_agent: LordAgent, verbose: int, train: bool):
         self.__myname = "lord game player"
+        self.__verbose = verbose
         self.__agent = player_agent
+        self.__train = train
         self.old_state = None
         self.prev_action = None
         self.prev_quality = None
@@ -748,6 +751,7 @@ class Player():
         self.prev_action = action
         self.old_state = current_state
         assert(action >= 0)
+        self.reward = 0
         if action > available.__len__():
             self.valid_index = False
             self.reward = -10
@@ -765,9 +769,12 @@ class Player():
             assert(k >= 0)
             the_comb = available[k]
         if the_comb is not None:
-            print(self.__myname, "-> ", the_comb)
+            if self.__verbose >= 2:
+                print(self.__myname, "-> ", the_comb)
             for i in the_comb.Cards():
                 self.holded_cards.remove(i)
+        else:
+            self.reward = self.reward - 2
         return the_comb
 
     def inform(self, cards: CardCombination, who: int):
@@ -780,7 +787,7 @@ class Player():
             self.next_player_history.append(cards)
         if cards is not None:
             self.who_take = who
-        if who == 0:
+        if who == 0 and self.__train:
             assert(self.old_state is not None)
             assert(self.prev_quality is not None)
             assert(self.prev_action is not None)
@@ -790,7 +797,7 @@ class Player():
             elif self.over():
                 self.reward = 100
             else:
-                self.reward = 1
+                self.reward = self.reward - 1
             self.__agent.train_q(self.old_state, self.prev_action,
                                  self.prev_quality, self.reward,
                                  self.GetState())
@@ -801,18 +808,28 @@ class Player():
             the_str = "$Lord$ " + self.__myname + ": "
         for i in reversed(self.holded_cards):
             the_str = the_str + str(i)
-        print(the_str)
+        if self.__verbose >= 2:
+            print(the_str)
 
     def over(self) -> bool:
         return self.holded_cards.__len__() == 0
 
 
 class LordGame():
-    def __init__(self):
+    def __init__(self, verbose: int = 0, train: bool = True,
+                 gameround: int = 1,
+                 model_path: str = "./lordgamemodel"):
         self.player_agent = LordAgent()
-        self.p1 = Player(self.player_agent)
-        self.p2 = Player(self.player_agent)
-        self.p3 = Player(self.player_agent)
+        self.__verbose = verbose
+        self.__model_path = model_path
+        self.__game_counter = 0
+        self.__round = gameround
+        self.__round_counter = 1
+        self.player_agent.try_load(self.__model_path)
+        self.p1 = Player(self.player_agent, verbose, train)
+        self.p2 = Player(self.player_agent, verbose, train)
+        self.p3 = Player(self.player_agent, verbose, train)
+        self.__train = train
         self.p1.AssignName("p1")
         self.p2.AssignName("p2")
         self.p3.AssignName("p3")
@@ -848,6 +865,10 @@ class LordGame():
             self.p2.inform(next_cards, who_reg(self.who_next, 1))
             self.p3.inform(next_cards, who_reg(self.who_next, 2))
             self.who_next = (self.who_next + 1) % 3
+        # TODO give penalty to losser
+        if self.__game_counter % 10 == 0:
+            self.player_agent.save(self.__model_path)
+        self.__game_counter = self.__game_counter + 1
         who_over = None
         win2 = None
         if self.p1.over():
@@ -868,10 +889,14 @@ class LordGame():
             msg = msg + " and " + win2.name()
         msg += " win"
         if who_over.is_lord:
-            msg += "s (Lord)"
+            msg += "s (Lord) "
         else:
-            msg += " (Farmer)"
-        print(msg)
+            msg += " (Farmer) "
+        msg += "round "
+        msg += str(self.__round_counter)
+        self.__round_counter = self.__round_counter + 1
+        if self.__verbose >= 1:
+            print(msg)
         self.p1.Reset()
         self.p2.Reset()
         self.p3.Reset()
@@ -908,12 +933,18 @@ class LordGame():
         self.p1.ShowCards()
         self.p2.ShowCards()
         self.p3.ShowCards()
-        self.game_round()
+        try:
+            self.game_round()
+        except AssertionError as err:
+            print(err)
+        self.__round = self.__round - 1
+        if self.__round > 0:
+            self.RunAGame()
 
     def GameOver(self) -> bool:
         return self.p1.over() or self.p2.over() or self.p3.over()
 
 
 if __name__ == "__main__":
-    game = LordGame()
+    game = LordGame(1, True, 100)
     game.RunAGame()
