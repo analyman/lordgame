@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 from enum import Enum
+from model import LordAgent
 import random
 
 
@@ -313,8 +314,8 @@ class CardCombination():
            card_type == CardCombinationType.MultiDouble or
            card_type == CardCombinationType.MultiThree):
             return self.__store[0].card_value > other.__store[0].card_value
-        a = get_multiThree(self.__store)
-        b = get_multiThree(other.__store)
+        a = get_three(self.__store) + get_multiThree(self.__store)
+        b = get_three(self.__store) + get_multiThree(other.__store)
         assert(a.__len__() > 0 and b.__len__() > 0)
         am = a[0]
         for i in a:
@@ -324,7 +325,7 @@ class CardCombination():
         for i in b:
             if i.__store.__len__() > bm.__store.__len__():
                 bm = i
-        return am[0].card_value > bm[0].card_value
+        return am.__store[0].card_value > bm.__store[0].card_value
 
     def GreaterThan(self, other) -> bool:
         if(self.cardType() != other.cardType() and
@@ -616,21 +617,76 @@ def all_valid(kk: [CardCombination]):
         assert(k.valid())
 
 
+class PlayerState():
+    def __init__(self, cards=[], who_lord=0,
+                 prev=[], me=[], next=[], who_take=0):
+        self.who_lord: int = who_lord
+        self.cards: [Card] = cards
+        self.prev: [CardCombination] = prev
+        self.me: [CardCombination] = []
+        self.next: [CardCombination] = next
+        self.who_take: int = who_take
+
+    def basic_input_from_state(self) -> [int]:
+        data = []
+        data.append(self.who_lord)
+        data.append(self.who_take)
+
+        def card_to_val(card) -> float:
+            return card.card_value + card.card_suit.value * 0.1
+        map(lambda x: data.append(card_to_val(x)),
+            self.cards)
+        for _ in range(data.__len__(), 22):
+            data.append(0)
+        map(lambda x: map(lambda y: data.append(card_to_val(y)), x.Cards()),
+            self.prev)
+        for _ in range(data.__len__(), 42):
+            data.append(0)
+        map(lambda x: map(lambda y: data.append(card_to_val(y)), x.Cards()),
+            self.me)
+        for _ in range(data.__len__(), 62):
+            data.append(0)
+        map(lambda x: map(lambda y: data.append(card_to_val(y)), x.Cards()),
+            self.next)
+        for _ in range(data.__len__(), 82):
+            data.append(0)
+        return data
+
+
 class Player():
-    def __init__(self):
+    def __init__(self, player_agent: LordAgent):
         self.__myname = "lord game player"
+        self.__agent = player_agent
+        self.old_state = None
+        self.prev_action = None
+        self.prev_quality = None
+        self.valid_index = False
+        self.reward = None
         self.Reset()
 
     def AssignName(self, name: str):
         self.__myname = name
+
+    def name(self) -> str:
+        return self.__myname
+
+    @property
+    def is_lord(self) -> bool:
+        return self.who_lord == 0
 
     def Reset(self):
         self.holded_cards = []
         self.prev_player_history = []
         self.my_history = []
         self.next_player_history = []
-        self.is_lord = False
+        self.who_lord = - 2
         self.who_take = -2
+
+    def GetState(self) -> [int]:
+        return PlayerState(cards=self.holded_cards, who_lord=self.who_lord,
+                           prev=self.prev_player_history, me=self.my_history,
+                           next=self.next_player_history,
+                           who_take=self.who_take).basic_input_from_state()
 
     def GetCards(self, cards: [Card]):
         self.holded_cards = self.holded_cards + cards
@@ -639,7 +695,7 @@ class Player():
     def GetLordCards(self, cards: [Card]):
         self.GetCards(cards)
         self.who_take = 0
-        self.is_lord = True
+        self.who_lord = 0
 
     def __allPossibleCombination(self) -> [CardCombination]:
         single = get_single(self.holded_cards)
@@ -685,8 +741,29 @@ class Player():
                 all_comb)
         )
         the_comb: CardCombination = None
-        if available.__len__() != 0:
-            the_comb = available[0]
+        current_state = self.GetState()
+        quality, action = self.__agent.predict(current_state,
+                                               available.__len__())
+        self.prev_quality = quality
+        self.prev_action = action
+        self.old_state = current_state
+        assert(action >= 0)
+        if action > available.__len__():
+            self.valid_index = False
+            self.reward = -10
+        elif action == 0 and self.who_take == 0:
+            self.valid_index = False
+            self.reward = -20
+        else:
+            self.valid_index = True
+        if available.__len__() != 0 and (not self.valid_index or action != 0):
+            al = available.__len__()
+            # TODO 0 or random
+            k = random.randint(0, al - 1)
+            if self.valid_index:
+                k = action - 1
+            assert(k >= 0)
+            the_comb = available[k]
         if the_comb is not None:
             print(self.__myname, "-> ", the_comb)
             for i in the_comb.Cards():
@@ -703,10 +780,24 @@ class Player():
             self.next_player_history.append(cards)
         if cards is not None:
             self.who_take = who
+        if who == 0:
+            assert(self.old_state is not None)
+            assert(self.prev_quality is not None)
+            assert(self.prev_action is not None)
+            assert(self.valid_index is not None)
+            if not self.valid_index:
+                pass
+            elif self.over():
+                self.reward = 100
+            else:
+                self.reward = 1
+            self.__agent.train_q(self.old_state, self.prev_action,
+                                 self.prev_quality, self.reward,
+                                 self.GetState())
 
     def ShowCards(self):
         the_str = "Farmer " + self.__myname + ": "
-        if self.is_lord:
+        if self.who_lord == 0:
             the_str = "$Lord$ " + self.__myname + ": "
         for i in reversed(self.holded_cards):
             the_str = the_str + str(i)
@@ -718,9 +809,10 @@ class Player():
 
 class LordGame():
     def __init__(self):
-        self.p1 = Player()
-        self.p2 = Player()
-        self.p3 = Player()
+        self.player_agent = LordAgent()
+        self.p1 = Player(self.player_agent)
+        self.p2 = Player(self.player_agent)
+        self.p3 = Player(self.player_agent)
         self.p1.AssignName("p1")
         self.p2.AssignName("p2")
         self.p3.AssignName("p3")
@@ -756,6 +848,33 @@ class LordGame():
             self.p2.inform(next_cards, who_reg(self.who_next, 1))
             self.p3.inform(next_cards, who_reg(self.who_next, 2))
             self.who_next = (self.who_next + 1) % 3
+        who_over = None
+        win2 = None
+        if self.p1.over():
+            who_over = self.p1
+        elif self.p2.over():
+            who_over = self.p2
+        else:
+            who_over = self.p3
+        if not who_over.is_lord:
+            if not self.p1.is_lord and self.p1 != who_over:
+                win2 = self.p1
+            if not self.p2.is_lord and self.p2 != who_over:
+                win2 = self.p2
+            if not self.p3.is_lord and self.p3 != who_over:
+                win2 = self.p3
+        msg = who_over.name()
+        if win2 is not None:
+            msg = msg + " and " + win2.name()
+        msg += " win"
+        if who_over.is_lord:
+            msg += "s (Lord)"
+        else:
+            msg += " (Farmer)"
+        print(msg)
+        self.p1.Reset()
+        self.p2.Reset()
+        self.p3.Reset()
 
     def RunAGame(self):
         new_cards = self.all_cards.copy()
@@ -776,9 +895,15 @@ class LordGame():
         # TODO 叫地主
         if self.who_next == 0:
             self.p1.GetLordCards(rand_cards)
+            self.p2.who_lord = -1
+            self.p3.who_lord = 1
         elif self.who_next == 1:
+            self.p1.who_lord = 1
             self.p2.GetLordCards(rand_cards)
+            self.p3.who_lord = -1
         elif self.who_next == 2:
+            self.p1.who_lord = -1
+            self.p2.who_lord = 1
             self.p3.GetLordCards(rand_cards)
         self.p1.ShowCards()
         self.p2.ShowCards()
