@@ -938,13 +938,10 @@ class LordGame():
         self.p1.ShowCards()
         self.p2.ShowCards()
         self.p3.ShowCards()
-        error = None
         try:
             self.game_round()
         except AssertionError as err:
-            error = err
-            assert(False)
-            print(error)
+            print(err)
         finally:
             self.p1.Reset()
             self.p2.Reset()
