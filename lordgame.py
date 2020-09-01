@@ -583,6 +583,7 @@ def n_double(cards: [Card], n: int) -> [[Card]]:
     return ret
 
 
+# FIXME when REMAIN also in three
 def get_multiThreeA(cards: [Card]) -> [CardCombination]:
     ret = []
     mm = get_multiThree(cards)
@@ -598,7 +599,7 @@ def get_multiThreeA(cards: [Card]) -> [CardCombination]:
     return ret
 
 
-# FIXME
+# FIXME when REMAIN also is in three
 def get_multiThreeB(cards: [Card]) -> [CardCombination]:
     ret = []
     mm = get_multiThree(cards)
@@ -745,8 +746,10 @@ class Player():
         )
         the_comb: CardCombination = None
         current_state = self.GetState()
-        quality, action = self.__agent.predict(current_state,
-                                               available.__len__())
+        # quality, action = self.__agent.predict(current_state,
+        #                                        available.__len__())
+        quality = 0
+        action = available.__len__() + 1
         self.prev_quality = quality
         self.prev_action = action
         self.old_state = current_state
@@ -866,7 +869,7 @@ class LordGame():
             self.p3.inform(next_cards, who_reg(self.who_next, 2))
             self.who_next = (self.who_next + 1) % 3
         # TODO give penalty to losser
-        if self.__game_counter % 10 == 0:
+        if self.__game_counter % 10 == 0 and self.__train:
             self.player_agent.save(self.__model_path)
         self.__game_counter = self.__game_counter + 1
         who_over = None
@@ -897,11 +900,8 @@ class LordGame():
         self.__round_counter = self.__round_counter + 1
         if self.__verbose >= 1:
             print(msg)
-        self.p1.Reset()
-        self.p2.Reset()
-        self.p3.Reset()
 
-    def RunAGame(self):
+    def __run_game(self):
         new_cards = self.all_cards.copy()
         rand_cards = []
         while new_cards.__len__() > 0:
@@ -909,8 +909,13 @@ class LordGame():
             rand_cards.append(new_cards[r])
             del new_cards[r]
         all_len = rand_cards.__len__()
+        assert(all_len == self.all_cards.__len__())
+        assert(new_cards.__len__() == 0)
         n = all_len - 3
         assert(n % 3 == 0)
+        assert(self.p1.over())
+        assert(self.p2.over())
+        assert(self.p3.over())
         self.p1.GetCards(rand_cards[0:int(n / 3)])
         self.p2.GetCards(rand_cards[int(n / 3):int(n * 2 / 3)])
         self.p3.GetCards(rand_cards[int(n * 2 / 3):n])
@@ -933,18 +938,27 @@ class LordGame():
         self.p1.ShowCards()
         self.p2.ShowCards()
         self.p3.ShowCards()
+        error = None
         try:
             self.game_round()
         except AssertionError as err:
-            print(err)
-        self.__round = self.__round - 1
-        if self.__round > 0:
-            self.RunAGame()
+            error = err
+            assert(False)
+            print(error)
+        finally:
+            self.p1.Reset()
+            self.p2.Reset()
+            self.p3.Reset()
+
+    def RunAGame(self):
+        while self.__round > 0:
+            self.__run_game()
+            self.__round = self.__round - 1
 
     def GameOver(self) -> bool:
         return self.p1.over() or self.p2.over() or self.p3.over()
 
 
 if __name__ == "__main__":
-    game = LordGame(1, True, 100)
+    game = LordGame(1, False, 10000)
     game.RunAGame()
