@@ -734,7 +734,7 @@ class Player():
                          parameters.reward_base *
                          parameters.learning_rate)
             else:
-                q = q - (rewards_value.take_finally_loss *
+                q = q + (rewards_value.take_finally_loss *
                          parameters.reward_base *
                          parameters.learning_rate)
             state_action.append((s, a))
@@ -829,7 +829,7 @@ class Player():
                 RememberState(current_state.copy(), action, quality))
         if action == 0 and self.who_take == 0:
             assert(not self.over())
-            self.reward = self.reward - (rewards_value.refuse_in_take *
+            self.reward = self.reward + (rewards_value.refuse_in_take *
                                          parameters.reward_base)
             action = 1
         if action > 0:
@@ -844,7 +844,7 @@ class Player():
             if self.__verbose >= 2:
                 print("        ", cards_str, " -> ", self.__cards_str())
         else:
-            self.reward = self.reward - (rewards_value.refuse *
+            self.reward = self.reward + (rewards_value.refuse *
                                          parameters.reward_base)
         return the_comb
 
@@ -868,7 +868,7 @@ class Player():
             else:
                 a = (rewards_value.take_doesnt_win_in_this *
                      parameters.reward_base)
-                self.reward = self.reward - a
+                self.reward = self.reward + a
             v = self.__agent.train_q(self.old_state, self.prev_action,
                                      self.prev_quality, self.reward,
                                      self.GetState(),
