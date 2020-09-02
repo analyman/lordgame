@@ -636,35 +636,49 @@ class PlayerState():
 
         def card_to_val(card) -> float:
             return card.card_value + card.card_suit.value * 0.1
-        map(lambda x: data.append(card_to_val(x)),
-            self.cards)
+        for c in self.cards:
+            data.append(card_to_val(c))
         for _ in range(data.__len__(), 22):
             data.append(0)
-        map(lambda x: map(lambda y: data.append(card_to_val(y)), x.Cards()),
-            self.prev)
+        for com in self.prev:
+            if com is None:
+                continue
+            for c in com.Cards():
+                data.append(card_to_val(c))
         for _ in range(data.__len__(), 42):
             data.append(0)
-        map(lambda x: map(lambda y: data.append(card_to_val(y)), x.Cards()),
-            self.me)
+        for com in self.me:
+            if com is None:
+                continue
+            for c in com.cards():
+                data.append(card_to_val(c))
         for _ in range(data.__len__(), 62):
             data.append(0)
-        map(lambda x: map(lambda y: data.append(card_to_val(y)), x.Cards()),
-            self.next)
+        for com in self.next:
+            if com is None:
+                continue
+            for c in com.Cards():
+                data.append(card_to_val(c))
         for _ in range(data.__len__(), 82):
             data.append(0)
+        assert(data.__len__() == 82)
         return data
 
 
 class Player():
-    def __init__(self, player_agent: LordAgent, verbose: int, train: bool):
+    def __init__(self, player_agent: LordAgent, verbose: int,
+                 immediate_train: bool, post_train: bool,
+                 random_generate: bool):
         self.__myname = "lord game player"
         self.__verbose = verbose
         self.__agent = player_agent
-        self.__train = train
+        self.__immediate_train = immediate_train
+        self.__post_train = post_train
+        self.__random_generate = random_generate
+        self.__remember: [([int], int, float)] = []
         self.old_state = None
         self.prev_action = None
         self.prev_quality = None
-        self.valid_index = False
         self.reward = None
         self.Reset()
 
@@ -677,6 +691,27 @@ class Player():
     @property
     def is_lord(self) -> bool:
         return self.who_lord == 0
+
+    def finish_this_round_and_train(self, is_lord_win: bool):
+        if not self.__post_train or self.__remember.__len__() == 0:
+            return
+        win = False
+        if self.is_lord:
+            win = is_lord_win
+        else:
+            win = not is_lord_win
+        state_action = []
+        quality = []
+        for s, a, q in self.__remember:
+            assert(s.__len__() == 82)
+            if win:
+                q = q + 2
+            else:
+                q = q - 2
+            state_action.append((s, a))
+            quality.append(q)
+        self.__agent.train_x(state_action, quality)
+        self.__remember = []
 
     def Reset(self):
         self.holded_cards = []
@@ -744,33 +779,29 @@ class Player():
                            x.GreaterThan(prevComb)),
                 all_comb)
         )
+        al = available.__len__()
         the_comb: CardCombination = None
         current_state = self.GetState()
-        # quality, action = self.__agent.predict(current_state,
-        #                                        available.__len__())
-        quality = 0
-        action = available.__len__() + 1
+        quality: float = 0
+        action: int = 0
+        if self.__random_generate:
+            action = random.randint(0, al)
+            quality = self.__agent.quality(current_state, action)
+        else:
+            quality, action = self.__agent.predict(current_state, al)
+        assert(action >= 0 and action <= al)
         self.prev_quality = quality
         self.prev_action = action
         self.old_state = current_state
-        assert(action >= 0)
         self.reward = 0
-        if action > available.__len__():
-            self.valid_index = False
-            self.reward = -10
-        elif action == 0 and self.who_take == 0:
-            self.valid_index = False
-            self.reward = -20
-        else:
-            self.valid_index = True
-        if available.__len__() != 0 and (not self.valid_index or action != 0):
-            al = available.__len__()
-            # TODO 0 or random
-            k = random.randint(0, al - 1)
-            if self.valid_index:
-                k = action - 1
-            assert(k >= 0)
-            the_comb = available[k]
+        if self.__post_train:
+            self.__remember.append((current_state, action, quality))
+        if action == 0 and self.who_take == 0:
+            assert(not self.over())
+            self.reward = self.reward - 5
+            action = 1
+        if action > 0:
+            the_comb = available[action - 1]
         if the_comb is not None:
             if self.__verbose >= 2:
                 print(self.__myname, "-> ", the_comb)
@@ -790,14 +821,11 @@ class Player():
             self.next_player_history.append(cards)
         if cards is not None:
             self.who_take = who
-        if who == 0 and self.__train:
+        if who == 0 and self.__immediate_train:
             assert(self.old_state is not None)
             assert(self.prev_quality is not None)
             assert(self.prev_action is not None)
-            assert(self.valid_index is not None)
-            if not self.valid_index:
-                pass
-            elif self.over():
+            if self.over():
                 self.reward = 100
             else:
                 self.reward = self.reward - 1
@@ -819,7 +847,8 @@ class Player():
 
 
 class LordGame():
-    def __init__(self, verbose: int = 0, train: bool = True,
+    def __init__(self, verbose: int = 0, random_action: bool = False,
+                 immediate_train: bool = True, post_train: bool = True,
                  gameround: int = 1,
                  model_path: str = "./lordgamemodel"):
         self.player_agent = LordAgent()
@@ -828,11 +857,15 @@ class LordGame():
         self.__game_counter = 0
         self.__round = gameround
         self.__round_counter = 1
+        self.__random_generate = True
         self.player_agent.try_load(self.__model_path)
-        self.p1 = Player(self.player_agent, verbose, train)
-        self.p2 = Player(self.player_agent, verbose, train)
-        self.p3 = Player(self.player_agent, verbose, train)
-        self.__train = train
+        self.p1 = Player(self.player_agent, verbose, immediate_train,
+                         post_train, random_action)
+        self.p2 = Player(self.player_agent, verbose, immediate_train,
+                         post_train, random_action)
+        self.p3 = Player(self.player_agent, verbose, immediate_train,
+                         post_train, random_action)
+        self.__train = immediate_train or post_train
         self.p1.AssignName("p1")
         self.p2.AssignName("p2")
         self.p3.AssignName("p3")
@@ -868,7 +901,14 @@ class LordGame():
             self.p2.inform(next_cards, who_reg(self.who_next, 1))
             self.p3.inform(next_cards, who_reg(self.who_next, 2))
             self.who_next = (self.who_next + 1) % 3
-        # TODO give penalty to losser
+        lord_win = False
+        if((self.p1.over() and self.p1.is_lord) or
+           (self.p2.over() and self.p2.is_lord) or
+           (self.p3.over() and self.p3.is_lord)):
+            lord_win = True
+        self.p1.finish_this_round_and_train(lord_win)
+        self.p2.finish_this_round_and_train(lord_win)
+        self.p3.finish_this_round_and_train(lord_win)
         if self.__game_counter % 10 == 0 and self.__train:
             self.player_agent.save(self.__model_path)
         self.__game_counter = self.__game_counter + 1
@@ -957,5 +997,6 @@ class LordGame():
 
 
 if __name__ == "__main__":
-    game = LordGame(1, False, 10000)
+    game = LordGame(1, random_action=True, immediate_train=False,
+                    post_train=True, gameround=100)
     game.RunAGame()

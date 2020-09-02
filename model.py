@@ -56,17 +56,29 @@ class LordAgent():
         old_state_data = old_state
         old_state_data.append(action)
         self.model.fit(np.asarray(old_state_data).reshape(1, 83),
-                       np.asarray([v]).reshape(1, 1), verbose=0)
+                       np.asarray([v]).reshape(1, 1), verbose=1)
+
+    def quality(self, state: [int], action: int) -> float:
+        data = state.copy()
+        data.append(action)
+        return self.model.predict(np.asarray(data).reshape(1, 83))[0][0]
+
+    def train_x(self, state_action: [([int], int)], new_quality: [float]):
+        ll = state_action.__len__()
+        assert(new_quality.__len__() == ll)
+        data = []
+        for s, a in state_action:
+            s.append(a)
+            data.append(s)
+        self.model.fit(np.asarray(data).reshape(ll, 83),
+                       np.asarray(new_quality).reshape(ll, 1), verbose=1)
 
     def predict(self, state: [int], avaliable: int) -> (float, int):
-        data = state
+        assert(state.__len__() == 82)
         max_quality = -1
         max_index = -1
         for i in range(0, avaliable + 1):
-            k = data.copy()
-            k.append(i)
-            assert(k.__len__() == 83)
-            q = self.model.predict(np.asarray(k).reshape(1, 83))[0][0]
+            q = self.quality(state, i)
             if q > max_quality:
                 max_quality = q
                 max_index = i
