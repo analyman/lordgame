@@ -666,11 +666,12 @@ class PlayerState():
 
 
 class Player():
-    def __init__(self, player_agent: LordAgent, verbose: int,
+    def __init__(self, game, player_agent: LordAgent, verbose: int,
                  immediate_train: bool, post_train: bool,
                  random_generate: bool):
         self.__myname = "lord game player"
         self.__verbose = verbose
+        self.__game = game
         self.__agent = player_agent
         self.__immediate_train = immediate_train
         self.__post_train = post_train
@@ -710,7 +711,7 @@ class Player():
                 q = q - 2
             state_action.append((s, a))
             quality.append(q)
-        self.__agent.train_x(state_action, quality)
+        self.__game.save_train_data(state_action, quality)
         self.__remember = []
 
     def Reset(self):
@@ -859,13 +860,15 @@ class LordGame():
         self.__round_counter = 1
         self.__random_generate = True
         self.player_agent.try_load(self.__model_path)
-        self.p1 = Player(self.player_agent, verbose, immediate_train,
+        self.p1 = Player(self, self.player_agent, verbose, immediate_train,
                          post_train, random_action)
-        self.p2 = Player(self.player_agent, verbose, immediate_train,
+        self.p2 = Player(self, self.player_agent, verbose, immediate_train,
                          post_train, random_action)
-        self.p3 = Player(self.player_agent, verbose, immediate_train,
+        self.p3 = Player(self, self.player_agent, verbose, immediate_train,
                          post_train, random_action)
         self.__train = immediate_train or post_train
+        self.__train_data_x = []
+        self.__train_data_y = []
         self.p1.AssignName("p1")
         self.p2.AssignName("p2")
         self.p3.AssignName("p3")
@@ -878,6 +881,13 @@ class LordGame():
             self.all_cards.append(Card(i, CardSuit.SpadeSuit))
         self.all_cards.append(Card(16, CardSuit.HeartSuit))
         self.all_cards.append(Card(16, CardSuit.SpadeSuit))
+
+    def save_train_data(self, x, y):
+        assert(x.__len__() == y.__len__())
+        for x_v in x:
+            self.__train_data_x.append(x_v)
+        for y_v in y:
+            self.__train_data_y.append(y_v)
 
     def game_round(self):
         while not self.GameOver():
@@ -910,6 +920,11 @@ class LordGame():
         self.p2.finish_this_round_and_train(lord_win)
         self.p3.finish_this_round_and_train(lord_win)
         if self.__game_counter % 10 == 0 and self.__train:
+            if self.__train_data_x.__len__() > 0:
+                self.player_agent.train_x(self.__train_data_x,
+                                          self.__train_data_y)
+                self.__train_data_x = []
+                self.__train_data_y = []
             self.player_agent.save(self.__model_path)
         self.__game_counter = self.__game_counter + 1
         who_over = None
@@ -996,7 +1011,11 @@ class LordGame():
         return self.p1.over() or self.p2.over() or self.p3.over()
 
 
+# train first model using random generate action
+#     (random_action=True and post_train=True)
+# optimize the model using Q-learning algorithm, very slow
+#     (random_action=False immediate_train=True)
 if __name__ == "__main__":
-    game = LordGame(1, random_action=True, immediate_train=False,
-                    post_train=True, gameround=100)
+    game = LordGame(2, random_action=False, immediate_train=False,
+                    post_train=False, gameround=100)
     game.RunAGame()

@@ -39,7 +39,7 @@ class LordAgent():
         model = keras.Sequential()
         model.add(Dense(100, activation=activations.relu, input_dim=83))
         model.add(Dense(100, activation=activations.relu))
-        model.add(Dense(1, activation=activations.relu))
+        model.add(Dense(1, activation=activations.linear))
         opt = keras.optimizers.Adam(learning_rate)
         model.compile(optimizer=opt, loss="mse")
         return model
@@ -75,7 +75,7 @@ class LordAgent():
 
     def predict(self, state: [int], avaliable: int) -> (float, int):
         assert(state.__len__() == 82)
-        max_quality = -1
+        max_quality = -float('inf')
         max_index = -1
         for i in range(0, avaliable + 1):
             q = self.quality(state, i)
