@@ -6,6 +6,19 @@ from model import parameters
 import random
 
 
+class Rewards():
+    def __init__(self):
+        self.take_finally_loss = -3
+        self.take_finally_win = 3
+        self.take_win_in_this = 20
+        self.take_doesnt_win_in_this = 0
+        self.refuse_in_take = -5
+        self.refuse = -0.1
+
+
+rewards_value = Rewards()
+
+
 class CardSuit(Enum):
     ClubSuit = 1
     DiamondSuit = 2
@@ -717,9 +730,13 @@ class Player():
             q = rs.quality
             assert(s.__len__() == 82)
             if win:
-                q = q + 3 * parameters.reward_base * parameters.learning_rate
+                q = q + (rewards_value.take_finally_win *
+                         parameters.reward_base *
+                         parameters.learning_rate)
             else:
-                q = q - 3 * parameters.reward_base * parameters.learning_rate
+                q = q - (rewards_value.take_finally_loss *
+                         parameters.reward_base *
+                         parameters.learning_rate)
             state_action.append((s, a))
             quality.append(q)
         self.__game.save_train_data(state_action, quality)
@@ -812,7 +829,8 @@ class Player():
                 RememberState(current_state.copy(), action, quality))
         if action == 0 and self.who_take == 0:
             assert(not self.over())
-            self.reward = self.reward - 5 * parameters.reward_base
+            self.reward = self.reward - (rewards_value.refuse_in_take *
+                                         parameters.reward_base)
             action = 1
         if action > 0:
             the_comb = available[action - 1]
@@ -826,7 +844,8 @@ class Player():
             if self.__verbose >= 2:
                 print("        ", cards_str, " -> ", self.__cards_str())
         else:
-            self.reward = self.reward - 2 * parameters.reward_base
+            self.reward = self.reward - (rewards_value.refuse *
+                                         parameters.reward_base)
         return the_comb
 
     def inform(self, cards: CardCombination, who: int):
@@ -844,9 +863,12 @@ class Player():
             assert(self.prev_quality is not None)
             assert(self.prev_action is not None)
             if self.over():
-                self.reward = 20 * parameters.reward_base
+                self.reward = (rewards_value.take_win_in_this *
+                               parameters.reward_base)
             else:
-                self.reward = self.reward - parameters.reward_base
+                a = (rewards_value.take_doesnt_win_in_this *
+                     parameters.reward_base)
+                self.reward = self.reward - a
             v = self.__agent.train_q(self.old_state, self.prev_action,
                                      self.prev_quality, self.reward,
                                      self.GetState(),
@@ -1044,6 +1066,6 @@ class LordGame():
 # optimize the model using Q-learning algorithm, very slow
 #     (random_action=False immediate_train=True)
 if __name__ == "__main__":
-    game = LordGame(1, random_action=True, immediate_train=True,
+    game = LordGame(1, random_action=False, immediate_train=True,
                     post_train=True, gameround=2)
     game.RunAGame()

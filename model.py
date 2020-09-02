@@ -56,7 +56,7 @@ class LordAgent():
 
     def train_q(self, old_state: [int], action: int,
                 old_q: float, reward: float,
-                new_state: [int], fitverbose: int=1) -> float:
+                new_state: [int], fitverbose: int = 1) -> float:
         assert(action >= 0)
         assert(old_state.__len__() == 82)
         assert(new_state.__len__() == 82)
@@ -83,7 +83,8 @@ class LordAgent():
             s.append(a)
             data.append(s)
         self.model.fit(np.asarray(data).reshape(ll, 83),
-                       np.asarray(new_quality).reshape(ll, 1), verbose=fit_verbose)
+                       np.asarray(new_quality).reshape(ll, 1),
+                       verbose=fit_verbose)
 
     def predict(self, _state: [int], avaliable: int) -> (float, int):
         state = _state.copy()
