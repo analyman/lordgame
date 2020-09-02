@@ -25,8 +25,18 @@ from keras.layers.core import Dense
 # ANN fit
 # model.fit([s, a], Q(s, a))
 
-learning_rate = 0.001
-gamma = 0.9
+
+class Parameters():
+    def __init__(self, learning_rate, gamma, reward_base):
+        self.learning_rate = learning_rate
+        self.gamma = gamma
+        self.reward_base = reward_base
+
+
+learning_rate = 0.1
+gamma = 1
+reward_base = 100
+parameters = Parameters(learning_rate, gamma, reward_base)
 
 
 # TODO remember training
@@ -46,7 +56,7 @@ class LordAgent():
 
     def train_q(self, old_state: [int], action: int,
                 old_q: float, reward: float,
-                new_state: [int]):
+                new_state: [int], fitverbose: int=1) -> float:
         assert(action >= 0)
         assert(old_state.__len__() == 82)
         assert(new_state.__len__() == 82)
@@ -56,14 +66,16 @@ class LordAgent():
         old_state_data = old_state
         old_state_data.append(action)
         self.model.fit(np.asarray(old_state_data).reshape(1, 83),
-                       np.asarray([v]).reshape(1, 1), verbose=1)
+                       np.asarray([v]).reshape(1, 1), verbose=fitverbose)
+        return v
 
     def quality(self, state: [int], action: int) -> float:
         data = state.copy()
         data.append(action)
         return self.model.predict(np.asarray(data).reshape(1, 83))[0][0]
 
-    def train_x(self, state_action: [([int], int)], new_quality: [float]):
+    def train_x(self, state_action: [([int], int)], new_quality: [float],
+                fit_verbose=1):
         ll = state_action.__len__()
         assert(new_quality.__len__() == ll)
         data = []
@@ -71,9 +83,10 @@ class LordAgent():
             s.append(a)
             data.append(s)
         self.model.fit(np.asarray(data).reshape(ll, 83),
-                       np.asarray(new_quality).reshape(ll, 1), verbose=1)
+                       np.asarray(new_quality).reshape(ll, 1), verbose=fit_verbose)
 
-    def predict(self, state: [int], avaliable: int) -> (float, int):
+    def predict(self, _state: [int], avaliable: int) -> (float, int):
+        state = _state.copy()
         assert(state.__len__() == 82)
         max_quality = -float('inf')
         max_index = -1
