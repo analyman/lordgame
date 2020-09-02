@@ -817,10 +817,14 @@ class Player():
         if action > 0:
             the_comb = available[action - 1]
         if the_comb is not None:
+            cards_str = ""
             if self.__verbose >= 2:
-                print(self.__myname, "-> ", the_comb)
+                print(self.__myname, "=> ", the_comb)
+                cards_str = self.__cards_str()
             for i in the_comb.Cards():
                 self.holded_cards.remove(i)
+            if self.__verbose >= 2:
+                print("        ", cards_str, " -> ", self.__cards_str())
         else:
             self.reward = self.reward - 2 * parameters.reward_base
         return the_comb
@@ -849,12 +853,17 @@ class Player():
                                      self.__verbose)
             self.__remember[-1].quality = v
 
+    def __cards_str(self) -> str:
+        the_str = ""
+        for i in reversed(self.holded_cards):
+            the_str = the_str + str(i)
+        return the_str
+
     def ShowCards(self):
         the_str = "Farmer " + self.__myname + ": "
         if self.who_lord == 0:
             the_str = "$Lord$ " + self.__myname + ": "
-        for i in reversed(self.holded_cards):
-            the_str = the_str + str(i)
+        the_str += self.__cards_str()
         if self.__verbose >= 2:
             print(the_str)
 
